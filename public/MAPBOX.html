@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset='utf-8' />
+  <title>Display a map</title>
+  <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+  <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/d3/3.4.11/d3.min.js"></script>
+  <script src='https://api.tiles.mapbox.com/mapbox-gl-js/v0.53.0/mapbox-gl.js'></script>
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"
+    integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+  <link href='https://api.tiles.mapbox.com/mapbox-gl-js/v0.53.0/mapbox-gl.css' rel='stylesheet' />
+  <link rel="stylesheet" type="text/css" href="//cdnjs.cloudflare.com/ajax/libs/select2/3.5.0/select2.min.css">
+  </link>
+  <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+  <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/select2/3.5.0/select2.min.js"></script>
+  <script type="text/javascript" src="Departamentos.json"></script>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+    }
+
+    #map {
+      position: relative;
+      top: 0;
+      bottom: 0;
+      width: 100%;
+      height: 100%
+    }
+
+    .resize {
+      height: 500px !important;
+      margin-top: 5px
+    }
+
+    .node circle {
+      fill: #fff;
+      stroke: steelblue;
+      stroke-width: 3px;
+    }
+
+    .node text {
+      font: 12px sans-serif;
+    }
+
+    .link {
+      fill: none;
+      stroke: #ccc;
+      stroke-width: 2px;
+    }
+
+    #container {
+      border: 2px dotted;
+      width: auto
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Image and text -->
+  <nav style="justify-content: center" class="navbar navbar-light bg-light">
+    <a class="navbar-brand" href="#">
+      <img src="./el-planeta-tierra-2.png" width="35" height="35" class="d-inline-block align-top" alt="">
+      RouteMap
+    </a>
+  </nav>
+
+  <div class="container-fluid">
+    <div class="row">
+      <div class="col-sm-9 resize">
+        <div id='map'></div>
+      </div>
+      <div class="col-sm-3 resize">
+        <form action="" method="POST">
+          <div style="justify-content: center;" class="row">
+            <div class="form-group">
+              <label for="source">Ciudad Origen</label>
+              <input type="text" class="form-control" id="source" aria-describedby="emailHelp" placeholder="Origen">
+            </div>
+          </div>
+          <div style="justify-content: center;" class="row">
+            <div class="form-group">
+              <label for="target">Ciudad Destino</label>
+              <input type="text" class="form-control" id="target" placeholder="Destino">
+            </div>
+          </div>
+          <div style="justify-content: center;" class="row">
+            <button type="submit" class="btn btn-outline-primary" id="submit">Trazar </button>
+          </div>
+        </form>
+      </div>
+      <div id="container"></div>
+    </div>
+  </div>
+
+  <script>
+    $("#submit").click(function () {
+      var source = getInputValue('#source')
+      var target = getInputValue('#target')
+      const { PythonShell } = require('python-shell')
+      $.ajax({
+        type: 'POST',
+        url: 'MAPBOX.html',
+        data: { source: source, target: target }, // serializes the form's elements.
+        // success: function(data)
+        // {
+        //   alert(data); // show response from the php script.
+        // }
+      });
+
+      // avoid to execute the actual submit of the form.
+      let options = {
+        args: [source, target]
+      };
+
+      PythonShell.run('main.py', options, function (err, results) {
+        if (err) throw err;
+        // results is an array consisting of messages collected during execution
+      });
+
+      function searchTree(node, search) {
+        path = []
+        path.push(node)
+        node = (node.children) ? node.children : node._children;
+        for (var i = 1; i < search.length; i++) {
+          for (var j = 0; j < node.length; j++) {
+            currentNode = node[j]
+            if (currentNode.name === search[i]) {
+              path.push(currentNode)
+              node = (currentNode.children) ? currentNode.children : currentNode._children
+              break
+            }
+          }
+        }
+        return path
+      }
+
+      var margin = { top: 20, right: 120, bottom: 20, left: 120 },
+        width = 960 - margin.right - margin.left,
+        height = 800 - margin.top - margin.bottom;
+
+      var i = 0,
+        duration = 750,
+        root,
+        select2_data;
+
+      var diameter = 960;
+
+      var tree = d3.layout.tree()
+        .size([height, width]);
+
+      var diagonal = d3.svg.diagonal()
+        .projection(function (d) { return [d.y, d.x]; });
+
+      var svg = d3.select("#container").append("svg")
+        .attr("width", width + margin.right + margin.left)
+        .attr("height", height + margin.top + margin.bottom)
+        .append("g")
+        .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+      //recursively collapse children
+      function collapse(d) {
+        if (d.children) {
+          d._children = d.children;
+          d._children.forEach(collapse);
+          d.children = null;
+        }
+      }
+
+      // Toggle children on click.
+      function click(d) {
+        if (d.children) {
+          d._children = d.children;
+          d.children = null;
+        }
+        else {
+          d.children = d._children;
+          d._children = null;
+        }
+        update(d);
+      }
+
+      function openPaths(paths) {
+        for (var i = 0; i < paths.length; i++) {
+          if (paths[i].id !== "1") {//i.e. not root
+            paths[i].class = 'found';
+            if (paths[i]._children) { //if children are hidden: open them, otherwise: don't do anything
+              paths[i].children = paths[i]._children;
+              paths[i]._children = null;
+            }
+            update(paths[i]);
+          }
+        }
+      }
+
+      function getRoute() {
+        var cities = []
+        $.getJSON("route.json", function (data) {
+          for (var i = 0; i < data.length; i++) {
+            cities.push(data[i])
+          }
+
+        });
+        return cities;
+      }
+
+      function extract_select2_data() {
+        var cities = []
+        $.getJSON("Departamentos.json", function (data) {
+          for (var i = 0; i < data.length; i++) {
+            var field = {}
+            field["id"] = i
+            field["text"] = data[i].Capital
+            cities.push(field)
+          }
+
+        });
+        return cities;
+      }
+
+      d3.json("data.json", function (error, values) {
+        root = values;
+        root.x0 = height / 2;
+        root.y0 = 0;
+        root.children.forEach(collapse);
+        update(root);
+        var path = getRoute();
+        path.unshift(root.name);
+        var paths = searchTree(root, path);
+        console.log(paths)
+        if (typeof (paths) !== "undefined") {
+          openPaths(paths);
+        }
+        else {
+          alert(e.object.text + " not found!");
+        }
+        
+      });
+
+      d3.select(self.frameElement).style("height", "800px");
+
+      function update(source) {
+        // Compute the new tree layout.
+        var nodes = tree.nodes(root).reverse(),
+          links = tree.links(nodes);
+
+        // Normalize for fixed-depth.
+        nodes.forEach(function (d) { d.y = d.depth * 180; });
+
+        // Update the nodesâ€¦
+        var node = svg.selectAll("g.node")
+          .data(nodes, function (d) { return d.id || (d.id = ++i); });
+
+        // Enter any new nodes at the parent's previous position.
+        var nodeEnter = node.enter().append("g")
+          .attr("class", "node")
+          .attr("transform", function (d) { return "translate(" + source.y0 + "," + source.x0 + ")"; })
+          .on("click", click);
+
+        nodeEnter.append("circle")
+          .attr("r", 1e-6)
+          .style("fill", function (d) { return d._children ? "lightsteelblue" : "#fff"; });
+
+        nodeEnter.append("text")
+          .attr("x", function (d) { return d.children || d._children ? -10 : 10; })
+          .attr("dy", ".35em")
+          .attr("text-anchor", function (d) { return d.children || d._children ? "end" : "start"; })
+          .text(function (d) { return d.name; })
+          .style("fill-opacity", 1e-6);
+
+        // Transition nodes to their new position.
+        var nodeUpdate = node.transition()
+          .duration(duration)
+          .attr("transform", function (d) { return "translate(" + d.y + "," + d.x + ")"; });
+
+        nodeUpdate.select("circle")
+          .attr("r", 4.5)
+          .style("fill", function (d) {
+            if (d.class === "found") {
+              return "#ff4136"; //red
+            }
+            else if (d._children) {
+              return "lightsteelblue";
+            }
+            else {
+              return "#fff";
+            }
+          })
+          .style("stroke", function (d) {
+            if (d.class === "found") {
+              return "#ff4136"; //red
+            }
+          });
+
+        nodeUpdate.select("text")
+          .style("fill-opacity", 1);
+
+        // Transition exiting nodes to the parent's new position.
+        var nodeExit = node.exit().transition()
+          .duration(duration)
+          .attr("transform", function (d) { return "translate(" + source.y + "," + source.x + ")"; })
+          .remove();
+
+        nodeExit.select("circle")
+          .attr("r", 1e-6);
+
+        nodeExit.select("text")
+          .style("fill-opacity", 1e-6);
+
+        // Update the linksâ€¦
+        var link = svg.selectAll("path.link")
+          .data(links, function (d) { return d.target.id; });
+
+        // Enter any new links at the parent's previous position.
+        link.enter().insert("path", "g")
+          .attr("class", "link")
+          .attr("d", function (d) {
+            var o = { x: source.x0, y: source.y0 };
+            return diagonal({ source: o, target: o });
+          });
+
+        // Transition links to their new position.
+        link.transition()
+          .duration(duration)
+          .attr("d", diagonal)
+          .style("stroke", function (d) {
+            if (d.target.class === "found") {
+              return "#ff4136";
+            }
+          });
+
+        // Transition exiting nodes to the parent's new position.
+        link.exit().transition()
+          .duration(duration)
+          .attr("d", function (d) {
+            var o = { x: source.x, y: source.y };
+            return diagonal({ source: o, target: o });
+          })
+          .remove();
+
+        // Stash the old positions for transition.
+        nodes.forEach(function (d) {
+          d.x0 = d.x;
+          d.y0 = d.y;
+        });
+      }
+      return false;
+    });
+
+    function getInputValue(id) {
+      console.log($(id).select2('data')["text"]);
+      return $(id).select2('data')["text"];
+    }
+  </script>
+
+  <script>
+    function extract_select2_data() {
+        var cities = []
+        $.getJSON("Departamentos.json", function (data) {
+          for (var i = 0; i < data.length; i++) {
+            var field = {}
+            field["id"] = i
+            field["text"] = data[i].Capital
+            cities.push(field)
+          }
+
+        });
+        return cities;
+    }
+    var select2_data = extract_select2_data();
+        $("#source").select2({
+          data: select2_data,
+          containerCssClass: "source"
+        });
+        $("#target").select2({
+          data: select2_data,
+          containerCssClass: "target"
+        });
+
+  </script>
+
+  <script>
+    mapboxgl.accessToken = 'pk.eyJ1IjoiYWN2aWxsYXpvbiIsImEiOiJjajRjM3RuNmowNzRqMndvMmFpMmx1bXNvIn0.3GdY6C5pT_-n6JCnVRPycg';
+    var map = new mapboxgl.Map({
+      container: 'map', // container id
+      style: 'mapbox://styles/mapbox/streets-v9', // stylesheet location
+      center: [-74.9166667, 10.8], // starting position [lng, lat]
+      zoom: 8 // starting zoom
+    });
+
+    var nav = new mapboxgl.NavigationControl();
+    map.addControl(nav, 'top-left');
+
+    // new mapboxgl.Marker()
+    //   .setLngLat([-74.9166667, 10.8])
+    //   .addTo(map);
+    // //10.4166667,-74.9166667
+    // new mapboxgl.Marker()
+    //   .setLngLat([-74.9166667, 10.4166667])
+    //   .addTo(map);
+
+    // //10.5,-74.8333333
+    // new mapboxgl.Marker()
+    //   .setLngLat([-74.8333333, 10.5])
+    //   .addTo(map);
+
+    // new mapboxgl.Marker()
+    //   .setLngLat([-75.5, 7])
+    //   .addTo(map);
+
+
+    function CrearMarker(Data) {
+      var lat;
+      var lng;
+      Data.map((ciudad) => {
+        lat = '';
+        lng = '';
+        if (ciudad[0] == undefined) {
+
+        } else {
+          lng = (ciudad[0].center[0])
+          lat = (ciudad[0].center[1])
+          new mapboxgl.Marker()
+            .setLngLat([lng, lat])
+            .addTo(map)
+        }
+      })
+    }
+
+    GetData()
+    function GetData() {
+      fetch('latLng_Capitales.json', {
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        }
+      }).then(response => response.json()).then(responseJSON => {
+        CrearMarker(responseJSON)
+      })
+    }
+
+    map.on('load', function () {
+
+      map.addLayer({
+        "id": "route",
+        "type": "line",
+        "source": {
+          "type": "geojson",
+          "data": {
+            "type": "Feature",
+            "properties": {},
+            "geometry": {
+              "type": "LineString",
+              "coordinates": [
+                [
+                  -74.796529,
+                  10.964023
+                ],
+                [
+                  -74.794513,
+                  10.965858
+                ],
+                [
+                  -74.774961,
+                  10.96063
+                ],
+                [
+                  -74.773868,
+                  10.948857
+                ],
+                [
+                  -74.766493,
+                  10.951735
+                ],
+                [
+                  -74.75208,
+                  10.950973
+                ],
+                [
+                  -74.746774,
+                  10.95439
+                ],
+                [
+                  -74.726732,
+                  10.981534
+                ],
+                [
+                  -74.703276,
+                  10.990359
+                ],
+                [
+                  -74.682977,
+                  11.006393
+                ],
+                [
+                  -74.664027,
+                  11.004706
+                ],
+                [
+                  -74.631076,
+                  11.014002
+                ],
+                [
+                  -74.611852,
+                  11.012275
+                ],
+                [
+                  -74.59767,
+                  11.001075
+                ],
+                [
+                  -74.565918,
+                  10.99253
+                ],
+                [
+                  -74.550658,
+                  10.989558
+                ],
+                [
+                  -74.540758,
+                  10.991467
+                ],
+                [
+                  -74.516128,
+                  10.983129
+                ],
+                [
+                  -74.44425,
+                  10.971312
+                ],
+                [
+                  -74.431215,
+                  10.973793
+                ],
+                [
+                  -74.373054,
+                  10.969775
+                ],
+                [
+                  -74.306485,
+                  10.982817
+                ],
+                [
+                  -74.287264,
+                  10.990066
+                ],
+                [
+                  -74.260185,
+                  11.006517
+                ],
+                [
+                  -74.217877,
+                  11.004095
+                ],
+                [
+                  -74.214342,
+                  11.016449
+                ],
+                [
+                  -74.205411,
+                  11.027613
+                ],
+                [
+                  -74.202978,
+                  11.04095
+                ],
+                [
+                  -74.206936,
+                  11.060794
+                ],
+                [
+                  -74.213491,
+                  11.074332
+                ],
+                [
+                  -74.213563,
+                  11.085472
+                ],
+                [
+                  -74.217696,
+                  11.099992
+                ],
+                [
+                  -74.223331,
+                  11.112012
+                ],
+                [
+                  -74.226135,
+                  11.129036
+                ],
+                [
+                  -74.221282,
+                  11.148629
+                ],
+                [
+                  -74.230607,
+                  11.174879
+                ],
+                [
+                  -74.221085,
+                  11.185723
+                ],
+                [
+                  -74.205293,
+                  11.194145
+                ],
+                [
+                  -74.192595,
+                  11.208887
+                ],
+                [
+                  -74.189663,
+                  11.218798
+                ],
+                [
+                  -74.20172,
+                  11.233273
+                ],
+                [
+                  -74.201114,
+                  11.236
+                ]
+              ]
+            }
+          }
+        },
+        "layout": {
+          "line-join": "round",
+          "line-cap": "round"
+        },
+        "paint": {
+          "line-color": "#888",
+          "line-width": 8
+        }
+      });
+    });
+
+  </script>
+</body>
+
+</html>

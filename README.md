@@ -1,7 +1,7 @@
 # ROUTE MAP
-> ### Andres Ramirez
-> ### Andres Villazon
-> ### Juan Vergara
+> Andres Ramirez
+> Andres Villazon
+> Juan Vergara
 
 
 ### REQUSITOS PARA EJECUCIÓN

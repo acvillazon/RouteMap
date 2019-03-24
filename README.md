@@ -1,15 +1,15 @@
 # ROUTE MAP
 
-## REQUSITOS PARA EJECUCIÓN
+### REQUSITOS PARA EJECUCIÓN
 
-- Node Js
-- Paython3
+> - Node Js
+> - Paython3
 
-## SEGUIDO DE LA INSTALACIÓN Y DESCARGA DEL PROYECTO
+### SEGUIDO DE LA INSTALACIÓN Y DESCARGA DEL PROYECTO
 
 Es necesario abrir la consola y ubicarse en la carpeta del proyecto (RouteMapIA) y ejecutar el comando npm install.
 
-## EJECUTAR EL PROYECTO
+### EJECUTAR EL PROYECTO
 
 Una vez finalizado el proceso se procede con el comando node index.js.
 
